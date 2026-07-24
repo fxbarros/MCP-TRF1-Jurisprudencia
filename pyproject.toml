@@ -1,0 +1,22 @@
+[project]
+name = "jurisprudencia-trf1-mcp"
+version = "0.1.0"
+description = "Servidor MCP para pesquisa de jurisprudência do TRF1/JEF1 e Colegiado CJF (jurisprudencia.cjf.jus.br): busca, leitura de decisões e verificação de citações"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=1.27.0",
+    "httpx>=0.28.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+jurisprudencia-trf1-mcp = "jurisprudencia_trf1_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"

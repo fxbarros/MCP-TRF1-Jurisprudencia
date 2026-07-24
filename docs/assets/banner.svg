@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-label="MCP Jurisprudência TRF1">
+  <!-- Arte original (sumi-ê): samurai ao entardecer num campo de batalha.
+       MARCA dos projetos MCP de Fábio Ximenes Barros — a cena é a mesma
+       em todos os repositórios; só título e tagline mudam. -->
+  <defs>
+    <linearGradient id="ceu" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#191014"/>
+      <stop offset="0.62" stop-color="#3a1c1a"/>
+      <stop offset="1" stop-color="#241114"/>
+    </linearGradient>
+    <radialGradient id="sol" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#e04a33"/>
+      <stop offset="0.75" stop-color="#c22e26"/>
+      <stop offset="1" stop-color="#a91f22"/>
+    </radialGradient>
+    <linearGradient id="nevoa" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e8b78a" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#e8b78a" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="360" fill="url(#ceu)"/>
+
+  <!-- sol poente -->
+  <circle cx="985" cy="196" r="128" fill="url(#sol)"/>
+  <rect x="0" y="150" width="1280" height="10" fill="url(#nevoa)"/>
+
+  <!-- montanhas ao fundo -->
+  <path d="M700,262 L810,208 L878,246 L960,198 L1046,250 L1140,214 L1226,256 L1280,238 L1280,360 L700,360 Z"
+        fill="#1c0f12" opacity="0.85"/>
+
+  <!-- bando de corvos -->
+  <g stroke="#120a0c" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.9">
+    <path d="M760,96 q7,-8 14,0 q7,-8 14,0"/>
+    <path d="M816,74 q6,-7 12,0 q6,-7 12,0"/>
+    <path d="M872,104 q5,-6 10,0 q5,-6 10,0"/>
+    <path d="M700,120 q5,-6 10,0 q5,-6 10,0"/>
+  </g>
+
+  <!-- campo -->
+  <path d="M0,300 Q160,282 340,296 Q560,312 780,296 Q1040,282 1280,302 L1280,360 L0,360 Z" fill="#0d0709"/>
+
+  <!-- lanças fincadas do campo de batalha -->
+  <g stroke="#120a0c" stroke-width="4" stroke-linecap="round">
+    <line x1="742" y1="304" x2="758" y2="204"/>
+    <line x1="1206" y1="308" x2="1188" y2="212"/>
+  </g>
+  <path d="M758,204 l4,-18 l6,16 Z" fill="#120a0c"/>
+  <path d="M1188,212 l-6,-18 l-2,18 Z" fill="#120a0c"/>
+  <!-- sashimono (bandeirola) na lança -->
+  <path d="M1188,214 l-30,6 l2,34 l28,-4 Z" fill="#7d1418" opacity="0.85"/>
+
+  <!-- samurai (silhueta, de costas, katana em guarda baixa) -->
+  <g fill="#0a0507">
+    <!-- coque (chonmage) e cabeça -->
+    <circle cx="962" cy="176" r="13"/>
+    <path d="M956,160 q6,-10 14,-2 l-6,6 Z"/>
+    <!-- pescoço e ombros / dō (armadura do tronco) -->
+    <path d="M954,188 L971,188 L983,204 Q990,224 985,246 L940,246 Q935,222 942,204 Z"/>
+    <!-- sode (ombreiras) -->
+    <path d="M938,200 q-12,4 -14,20 l12,4 q0,-14 6,-20 Z"/>
+    <path d="M986,200 q12,4 14,20 l-12,4 q0,-14 -6,-20 Z"/>
+    <!-- braço direito estendido para a lâmina -->
+    <path d="M984,214 Q1006,224 1022,240 L1015,250 Q998,236 980,230 Z"/>
+    <!-- hakama (pernas largas) -->
+    <path d="M940,246 L985,246 L996,318 L972,318 L963,272 L954,318 L930,318 Z"/>
+    <!-- pés -->
+    <path d="M926,318 L956,318 L956,326 L922,326 Z"/>
+    <path d="M970,318 L1000,318 L1002,326 L968,326 Z"/>
+    <!-- saya (bainha) na cintura, apontando para trás -->
+    <path d="M942,236 L900,222 L898,228 L940,243 Z"/>
+  </g>
+  <!-- katana: lâmina em guarda baixa, apanhando a última luz -->
+  <path d="M1018,244 Q1052,268 1098,308 L1094,313 Q1050,276 1014,250 Z" fill="#d8cdbb"/>
+  <path d="M1018,244 Q1052,268 1098,308 L1096,310 Q1051,272 1016,247 Z" fill="#f4ece0"/>
+  <!-- tsuba -->
+  <circle cx="1016" cy="245" r="5" fill="#0a0507"/>
+
+  <!-- capim ao vento -->
+  <g stroke="#0a0507" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M60,332 q4,-26 -8,-40"/>
+    <path d="M78,334 q2,-22 10,-34"/>
+    <path d="M250,330 q6,-24 -4,-38"/>
+    <path d="M268,332 q0,-20 12,-30"/>
+    <path d="M470,334 q4,-22 -6,-34"/>
+    <path d="M640,330 q6,-24 -2,-36"/>
+    <path d="M658,332 q2,-18 12,-28"/>
+    <path d="M840,336 q4,-20 -6,-32"/>
+    <path d="M1120,334 q6,-22 -4,-34"/>
+    <path d="M1138,336 q2,-18 10,-28"/>
+  </g>
+
+  <!-- título -->
+  <g font-family="Iowan Old Style, Palatino, Georgia, serif">
+    <text x="72" y="150" font-size="58" font-weight="700" fill="#f3ead9" letter-spacing="1">MCP Jurisprudência TRF1</text>
+    <text x="74" y="192" font-size="23" fill="#d8b48e">A jurisprudência da Justiça Federal da 1ª Região no Claude, em linguagem natural</text>
+    <text x="74" y="224" font-size="17" fill="#9c7f68">portal oficial do CJF · TRF1 + JEF1 + Colegiado · filtros por relator, órgão e período · citação ABNT verificada</text>
+  </g>
+  <rect x="74" y="240" width="340" height="3" fill="#a91f22"/>
+</svg>
