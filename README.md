@@ -10,10 +10,10 @@
     <img alt="Bases" src="https://img.shields.io/badge/bases-TRF1%20%2B%20JEF1%20%2B%20Colegiado%20CJF-blueviolet">
     <img alt="MCP" src="https://img.shields.io/badge/MCP-Claude%20Desktop%20%2B%20Code-d97757">
     <img alt="Acesso" src="https://img.shields.io/badge/acesso-sem%20login%2C%20sem%20captcha-black">
-    <img alt="HTTP puro" src="https://img.shields.io/badge/motor-httpx%20puro%2C%20sem%20browser-8b0000">
+    <img alt="Camoufox ou httpx" src="https://img.shields.io/badge/motor-Camoufox%20ou%20httpx-8b0000">
 </p>
 
-Servidor [MCP](https://modelcontextprotocol.io) que permite ao Claude pesquisar a **jurisprudência do TRF1** (Tribunal Regional Federal da 1ª Região), das **Turmas Recursais/JEF1** e do **Colegiado do CJF** em linguagem natural, consultando o portal oficial [jurisprudencia.cjf.jus.br](https://jurisprudencia.cjf.jus.br) — sem login, sem captcha e sem navegador.
+Servidor [MCP](https://modelcontextprotocol.io) que permite ao Claude pesquisar a **jurisprudência do TRF1** (Tribunal Regional Federal da 1ª Região), das **Turmas Recursais/JEF1** e do **Colegiado do CJF** em linguagem natural, consultando o portal oficial [antiga-jurisprudencia.cjf.jus.br](https://antiga-jurisprudencia.cjf.jus.br) — sem login, sem captcha e sem navegador.
 
 Complementa o [MCP PJe-TRF1](https://github.com/fxbarros/MCP-PJe-TRF1): este pesquisa **precedentes** (ementas e dispositivos); aquele consulta **processos** (autos, prazos e documentos). O inteiro teor do voto fica no PJe — cada resultado traz o link, e o MCP PJe-TRF1 lê o conteúdo.
 
@@ -24,7 +24,7 @@ Complementa o [MCP PJe-TRF1](https://github.com/fxbarros/MCP-PJe-TRF1): este pes
 - 🧾 **Citação ABNT pronta** para colar na peça
 - ✅ **Verificação literal de citações**: confere se o trecho que você quer citar entre aspas existe mesmo na ementa/dispositivo publicados — antídoto contra alucinação
 - 📚 **Três bases num só servidor**: acórdãos do TRF1, Turmas Recursais (JEF1) e Colegiado do CJF (TNU e afins)
-- ⚡ **HTTP puro** (`httpx`): cada consulta são 2–4 requests; nada de Playwright/Chromium
+- 🦊 **Navegador Camoufox** por padrão, com a janela oculta (`CJF_HEADLESS=0` mostra a janela com a página de resultados da última busca); com `CJF_BACKEND=httpx` volta ao HTTP puro, sem navegador (2–4 requests por consulta)
 
 ## 🛠️ As 3 ferramentas
 
@@ -82,6 +82,19 @@ O portal é um app **JSF/PrimeFaces** sem Cloudflare nem captcha na busca. Cada 
 
 Os `name` dos inputs do painel avançado (`j_idtNN`) mudam entre deploys do portal — por isso o mapeamento é extraído em tempo de execução dos atributos estáveis dos `<label>`, com fallback num dicionário fixo.
 
+Desde 2026 o endereço `jurisprudencia.cjf.jus.br` serve o portal novo ("Jurisprudência Unificada"); o portal JSF consultado aqui continua no ar em `antiga-jurisprudencia.cjf.jus.br`.
+
+As requisições saem por um de dois caminhos, escolhido por variável de ambiente no registro do MCP (bloco `env`):
+
+| Variável | Valor | Efeito |
+|---|---|---|
+| `CJF_BACKEND` | `camoufox` (padrão) | abre o Camoufox na primeira consulta e o mantém aberto até o servidor encerrar |
+| `CJF_BACKEND` | `httpx` | requisições diretas, sem navegador |
+| `CJF_HEADLESS` | `1` (padrão) | janela do Camoufox oculta |
+| `CJF_HEADLESS` | `0` | janela do Camoufox visível |
+
+O fluxo, os campos enviados e o parsing são os mesmos nos dois caminhos. Pelo navegador, consultas simultâneas entram em fila na mesma página.
+
 ```
 jurisprudencia-trf1-mcp/
 ├── README.md
@@ -90,7 +103,7 @@ jurisprudencia-trf1-mcp/
 ├── docs/assets/banner.svg
 └── src/jurisprudencia_trf1_mcp/
     ├── server.py        # servidor MCP (3 tools, FastMCP)
-    └── cjf_client.py    # cliente httpx do portal (handshake JSF, parsing, paginação)
+    └── cjf_client.py    # cliente do portal (Camoufox ou httpx; handshake JSF, parsing, paginação)
 ```
 
 ## 🧰 Requisitos
@@ -104,6 +117,7 @@ jurisprudencia-trf1-mcp/
 git clone https://github.com/fxbarros/MCP-TRF1-Jurisprudencia.git
 cd MCP-TRF1-Jurisprudencia
 uv sync
+uv run camoufox fetch   # baixa o navegador Camoufox (dispensável com CJF_BACKEND=httpx)
 ```
 
 ### Claude Desktop
@@ -138,6 +152,6 @@ claude mcp add --scope user jurisprudencia-trf1 -- uv --directory /caminho/para/
 
 ## 📝 Licença e créditos
 
-Uso pessoal e profissional, sem garantias — use por sua conta e risco. Construído por [Fábio Ximenes Barros](https://github.com/fxbarros) com ajuda do [Claude](https://www.anthropic.com/claude), usando [httpx](https://www.python-httpx.org) e o [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
+Uso pessoal e profissional, sem garantias — use por sua conta e risco. Construído por [Fábio Ximenes Barros](https://github.com/fxbarros) com ajuda do [Claude](https://www.anthropic.com/claude), usando [Camoufox](https://camoufox.com), [httpx](https://www.python-httpx.org) e o [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
 <p align="center"><sub>Arte do banner: original — marca dos projetos MCP do autor.</sub></p>

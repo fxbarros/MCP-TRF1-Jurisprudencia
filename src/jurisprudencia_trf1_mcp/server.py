@@ -8,6 +8,7 @@ Expõe três tools ao Claude Desktop:
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -25,10 +26,21 @@ def _erro(msg: str) -> dict:
     }
 
 
-mcp = FastMCP("jurisprudencia-trf1")
-
 _client: Optional[CJFClient] = None
 _client_lock = asyncio.Lock()
+
+
+@asynccontextmanager
+async def _ciclo_de_vida(_server: FastMCP):
+    """Fecha a janela do navegador quando o servidor encerra."""
+    try:
+        yield
+    finally:
+        if _client is not None:
+            await _client.fechar()
+
+
+mcp = FastMCP("jurisprudencia-trf1", lifespan=_ciclo_de_vida)
 
 
 async def _get_client() -> CJFClient:
@@ -60,7 +72,7 @@ async def buscar_jurisprudencia(
 ) -> dict:
     """Pesquisa jurisprudência do TRF1/JEF1 (ou Colegiado CJF) por palavra-chave.
 
-    Consulta o portal oficial jurisprudencia.cjf.jus.br (sem captcha). O
+    Consulta o portal oficial antiga-jurisprudencia.cjf.jus.br (sem captcha). O
     conteúdo devolvido — ementa completa, dispositivo, relator, datas — vem
     diretamente do portal oficial.
 

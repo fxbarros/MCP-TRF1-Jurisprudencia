@@ -1,4 +1,4 @@
-"""Cliente HTTP para o portal de jurisprudência do CJF (jurisprudencia.cjf.jus.br).
+"""Cliente para o portal de jurisprudência do CJF (antiga-jurisprudencia.cjf.jus.br).
 
 O portal é um app JSF/PrimeFaces 6.2 sem Cloudflare nem captcha na busca.
 Fluxo por consulta (stateless — cada busca abre sessão nova):
@@ -6,22 +6,43 @@ Fluxo por consulta (stateless — cada busca abre sessão nova):
   2. POST {base}/index.xhtml (form)     -> página 1 de resultados (HTML completo)
   3. POST parcial PrimeFaces (opcional) -> páginas seguintes (first=N*30)
 
+As requisições saem por um de dois caminhos (variável de ambiente CJF_BACKEND):
+  - "camoufox" (padrão): o navegador Camoufox, com a janela OCULTA, que fica
+    aberto entre as consultas. CJF_HEADLESS=0 mostra a janela, que exibe a
+    página de resultados da última busca (sempre a primeira página; a
+    paginação é pedida por baixo, via fetch).
+  - "httpx": requisições diretas, sem navegador.
+O fluxo, os campos enviados e o parsing são os mesmos nos dois caminhos.
+
 Todo o conteúdo da decisão (número, classe, relator, órgão, datas, ementa,
 dispositivo) vem inline no HTML dos resultados; o "inteiro teor" do portal é
 apenas um link para a consulta pública do PJe.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import html as html_lib
+import os
 import re
+import sys
 import unicodedata
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 
+# por onde as requisições saem: "camoufox" (padrão) ou "httpx"
+BACKEND = os.environ.get("CJF_BACKEND", "camoufox").strip().lower()
+# a janela do Camoufox fica oculta por padrão; CJF_HEADLESS=0 a mostra
+HEADLESS = os.environ.get("CJF_HEADLESS", "1").strip() != "0"
+
+# Em 2026 o endereço jurisprudencia.cjf.jus.br passou a servir o portal novo
+# ("Jurisprudência Unificada", app Angular); o portal JSF que este cliente
+# consulta continua no ar no host antiga-jurisprudencia.
 BASES = {
-    "trf1": "https://jurisprudencia.cjf.jus.br/trf1/index.xhtml",
-    "colegiado": "https://jurisprudencia.cjf.jus.br/colegiado/index.xhtml",
+    "trf1": "https://antiga-jurisprudencia.cjf.jus.br/trf1/index.xhtml",
+    "colegiado": "https://antiga-jurisprudencia.cjf.jus.br/colegiado/index.xhtml",
 }
 
 TIPOS_VALIDOS = {"ACORDAO", "SUMULA", "ARGUICAO", "DECISAOMONO"}
@@ -224,16 +245,209 @@ class Busca:
     resultados: list[Decisao] = field(default_factory=list)
 
 
+# ------------------------------------------------------------------ transporte
+#
+# Uma "sessão" é o canal de UMA consulta ao portal e expõe três operações:
+#   abrir(url)        -> GET da página inicial (HTML)
+#   enviar(url, form) -> POST completo do formulário (HTML dos resultados)
+#   ajax(url, form)   -> POST parcial PrimeFaces (XML partial-response)
+
+_HEADERS_AJAX = {
+    "Faces-Request": "partial/ajax",
+    "X-Requested-With": "XMLHttpRequest",
+}
+
+# envia o formulário pela própria página, para a janela exibir o resultado
+_JS_ENVIAR = """([url, pares]) => {
+    const f = document.createElement('form');
+    f.method = 'post';
+    f.action = url;
+    f.acceptCharset = 'UTF-8';
+    f.style.display = 'none';
+    for (const [nome, valor] of pares) {
+        const campo = document.createElement('input');
+        campo.type = 'hidden';
+        campo.name = nome;
+        campo.value = valor;
+        f.appendChild(campo);
+    }
+    document.body.appendChild(f);
+    HTMLFormElement.prototype.submit.call(f);
+}"""
+
+_JS_AJAX = """async ([url, pares, cabecalhos]) => {
+    const corpo = new URLSearchParams();
+    for (const [nome, valor] of pares) corpo.append(nome, valor);
+    const r = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            ...cabecalhos,
+        },
+        body: corpo.toString(),
+        credentials: 'same-origin',
+    });
+    return {status: r.status, texto: await r.text()};
+}"""
+
+
+def _pares(form: dict) -> list[list[str]]:
+    """Achata o form (valores str ou lista) em pares [nome, valor], na ordem."""
+    pares: list[list[str]] = []
+    for nome, valor in form.items():
+        for v in valor if isinstance(valor, (list, tuple)) else [valor]:
+            pares.append([nome, v])
+    return pares
+
+
+class _SessaoHttpx:
+    """Requisições diretas, sem navegador (CJF_BACKEND=httpx)."""
+
+    def __init__(self, timeout: float):
+        self._http = httpx.AsyncClient(
+            headers={"User-Agent": _UA},
+            timeout=timeout,
+            follow_redirects=True,
+        )
+
+    async def abrir(self, url: str) -> str:
+        r = await self._http.get(url)
+        r.raise_for_status()
+        return r.text
+
+    async def enviar(self, url: str, form: dict) -> str:
+        r = await self._http.post(url, data=form)
+        r.raise_for_status()
+        return r.text
+
+    async def ajax(self, url: str, form: dict) -> str:
+        r = await self._http.post(url, data=form, headers=_HEADERS_AJAX)
+        r.raise_for_status()
+        return r.text
+
+    async def fechar(self) -> None:
+        await self._http.aclose()
+
+
+async def _html_da_resposta(resp: Any, page: Any) -> str:
+    """HTML bruto de uma navegação, igual ao que o httpx receberia."""
+    if resp is None:
+        raise ConsultaFalhou("o navegador não recebeu resposta do portal")
+    if resp.status >= 400:
+        raise ConsultaFalhou(f"o portal respondeu HTTP {resp.status}")
+    try:
+        corpo = await resp.body()
+    except Exception:
+        # corpo indisponível no navegador: cai no HTML já carregado na página
+        return await page.content()
+    m = re.search(r"charset=([\w-]+)", resp.headers.get("content-type", ""), re.I)
+    try:
+        return corpo.decode(m.group(1) if m else "utf-8", errors="replace")
+    except LookupError:
+        return corpo.decode("utf-8", errors="replace")
+
+
+class _SessaoNavegador:
+    """Uma consulta feita pela janela do Camoufox."""
+
+    def __init__(self, page: Any):
+        self._page = page
+
+    async def abrir(self, url: str) -> str:
+        # cada busca abre sessão nova no portal, como no caminho direto
+        await self._page.context.clear_cookies()
+        resp = await self._page.goto(url, wait_until="domcontentloaded")
+        return await _html_da_resposta(resp, self._page)
+
+    async def enviar(self, url: str, form: dict) -> str:
+        async with self._page.expect_navigation(
+            wait_until="domcontentloaded"
+        ) as navegacao:
+            await self._page.evaluate(_JS_ENVIAR, [url, _pares(form)])
+        return await _html_da_resposta(await navegacao.value, self._page)
+
+    async def ajax(self, url: str, form: dict) -> str:
+        r = await self._page.evaluate(
+            _JS_AJAX, [url, _pares(form), _HEADERS_AJAX]
+        )
+        if r["status"] >= 400:
+            raise ConsultaFalhou(
+                f"o portal respondeu HTTP {r['status']} à requisição parcial"
+            )
+        return r["texto"]
+
+
+class _Navegador:
+    """Mantém o Camoufox vivo e serializa as consultas numa única página.
+
+    O navegador abre na primeira consulta e fica aberto até o servidor
+    encerrar; se for fechado à mão, a consulta seguinte abre outro.
+    """
+
+    def __init__(self, timeout: float):
+        self._timeout_ms = timeout * 1000
+        self._pilha: contextlib.AsyncExitStack | None = None
+        self._browser: Any = None
+        self._page: Any = None
+        self.lock = asyncio.Lock()
+
+    async def pagina(self) -> Any:
+        if self._page is not None and not self._page.is_closed():
+            return self._page
+        if self._browser is None or not self._browser.is_connected():
+            await self.fechar()
+            try:
+                # importado aqui para não pesar no handshake do MCP
+                from camoufox.async_api import AsyncCamoufox
+
+                pilha = contextlib.AsyncExitStack()
+                # o stdout é o canal do protocolo MCP: nada do Camoufox pode
+                # ser impresso nele
+                with contextlib.redirect_stdout(sys.stderr):
+                    self._browser = await pilha.enter_async_context(
+                        AsyncCamoufox(headless=HEADLESS)
+                    )
+                self._pilha = pilha
+            except Exception as e:
+                raise ConsultaFalhou(
+                    f"não foi possível abrir o navegador Camoufox "
+                    f"({type(e).__name__}: {str(e)[:200]}). Rode "
+                    "`uv run camoufox fetch` na pasta do projeto ou suba o "
+                    "servidor com CJF_BACKEND=httpx para consultar sem navegador"
+                ) from e
+        self._page = await self._browser.new_page()
+        self._page.set_default_timeout(self._timeout_ms)
+        return self._page
+
+    async def fechar(self) -> None:
+        pilha, self._pilha = self._pilha, None
+        self._browser = self._page = None
+        if pilha is not None:
+            with contextlib.suppress(Exception):
+                await pilha.aclose()
+
+
 class CJFClient:
     def __init__(self, timeout: float = 40.0):
         self._timeout = timeout
+        self._navegador = _Navegador(timeout)
 
-    def _novo_http(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            headers={"User-Agent": _UA},
-            timeout=self._timeout,
-            follow_redirects=True,
-        )
+    @contextlib.asynccontextmanager
+    async def _sessao(self):
+        """Canal de uma consulta, conforme CJF_BACKEND."""
+        if BACKEND == "httpx":
+            sessao = _SessaoHttpx(self._timeout)
+            try:
+                yield sessao
+            finally:
+                await sessao.fechar()
+        else:
+            async with self._navegador.lock:
+                yield _SessaoNavegador(await self._navegador.pagina())
+
+    async def fechar(self) -> None:
+        """Fecha a janela do navegador (se houver)."""
+        await self._navegador.fechar()
 
     async def buscar(
         self,
@@ -289,10 +503,8 @@ class CJFClient:
             if k in avancados:
                 avancados[k] = _normalizar_data(avancados[k], k)
 
-        async with self._novo_http() as http:
-            r = await http.get(url)
-            r.raise_for_status()
-            m = _RE_VIEWSTATE.search(r.text)
+        async with self._sessao() as sessao:
+            m = _RE_VIEWSTATE.search(await sessao.abrir(url))
             if not m:
                 raise ConsultaFalhou("ViewState não encontrado na página inicial")
             viewstate = m.group(1)
@@ -300,7 +512,7 @@ class CJFClient:
             campos_do_portal: dict[str, str] = {}
             if avancados:
                 viewstate, campos_do_portal = await self._ligar_pesquisa_avancada(
-                    http, url, viewstate, tipos, fontes
+                    sessao, url, viewstate, tipos, fontes
                 )
 
             form: dict = {
@@ -319,9 +531,7 @@ class CJFClient:
                     campo = campos_do_portal.get(chave) or CAMPOS_AVANCADOS[chave]
                     form[campo] = valor
 
-            r2 = await http.post(url, data=form)
-            r2.raise_for_status()
-            pagina_html = r2.text
+            pagina_html = await sessao.enviar(url, form)
 
             total = self._extrair_total(pagina_html)
 
@@ -349,16 +559,7 @@ class CJFClient:
                         "javax.faces.ViewState": vs2,
                     }
                 )
-                r3 = await http.post(
-                    url,
-                    data=ajax,
-                    headers={
-                        "Faces-Request": "partial/ajax",
-                        "X-Requested-With": "XMLHttpRequest",
-                    },
-                )
-                r3.raise_for_status()
-                pagina_html = r3.text
+                pagina_html = await sessao.ajax(url, ajax)
 
         return Busca(
             total_no_servidor=total,
@@ -427,7 +628,7 @@ class CJFClient:
 
     @staticmethod
     async def _ligar_pesquisa_avancada(
-        http: httpx.AsyncClient,
+        sessao: Any,
         url: str,
         viewstate: str,
         tipos: list[str],
@@ -457,17 +658,9 @@ class CJFClient:
             "formulario:j_idt62": fontes,
             "javax.faces.ViewState": viewstate,
         }
-        r = await http.post(
-            url,
-            data=toggle,
-            headers={
-                "Faces-Request": "partial/ajax",
-                "X-Requested-With": "XMLHttpRequest",
-            },
-        )
-        r.raise_for_status()
-        m = _RE_VIEWSTATE_XML.search(r.text)
-        return (m.group(1) if m else viewstate), _mapear_campos_avancados(r.text)
+        resposta = await sessao.ajax(url, toggle)
+        m = _RE_VIEWSTATE_XML.search(resposta)
+        return (m.group(1) if m else viewstate), _mapear_campos_avancados(resposta)
 
     # ------------------------------------------------------------------ parsing
 
